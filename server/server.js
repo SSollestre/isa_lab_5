@@ -3,8 +3,8 @@ const mysql = require("mysql");
 
 const con = mysql.createConnection({
   host: "localhost",
-  user: "root",
-  password: "",
+  user: "test",
+  password: "test",
   database: "webdev",
 });
 
@@ -13,7 +13,10 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   // Set response headers
-  res.writeHead(200, { "Content-Type": "application/json" });
+  res.writeHead(200, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  });
 
   // Define the response object
   const responseJson = JSON.stringify({ message: "Hello, World!" });
@@ -30,26 +33,37 @@ const server = http.createServer((req, res) => {
       message: "This is the test endpoint",
     });
     res.end(responseJson);
-  } else if (url.pathname === "/api/sendQuery") {
-    // Send a database query
-    const sendFailMessage = () => {
-      res.end(JSON.stringify({ status: "Fail" }));
-    };
-    con.connect((err) => {
-      if (err) {
-        sendFailMessage();
-        return;
-      }
-      console.log("Connected to mysql.");
-      let sql = "INSERT INTO score(name, score) values ('elon musk', 2900)";
+  } else if (req.method == "POST" && url.pathname === "/api/sendQuery") {
+    let body = {};
 
-      con.query(sql, (err, result) => {
+    // Get all data
+    req.on("data", (chunk) => {
+      try {
+        const data = JSON.parse(chunk);
+        Object.assign(body, data);
+      } catch (error) {
+        console.error("Error parsing JSON:", error);
+        res.end(JSON.stringify({ status: "Error", message: "Invalid JSON" }));
+      }
+    });
+
+    // Handle request on data transfer end
+    req.on("end", () => {
+      // Send a database query
+      const sendFailMessage = () => {
+        res.end(JSON.stringify({ status: "Fail" }));
+      };
+
+      let { query } = body;
+
+      con.query(query, (err, result) => {
         if (err) {
+          console.log("fail to query:", err);
           sendFailMessage();
-          return;
+        } else {
+          console.log("1 record inserted");
+          res.end(JSON.stringify({ status: "Success", result: result }));
         }
-        console.log("1 record inserted");
-        res.end(JSON.stringify({ status: "Success", result: result }));
       });
     });
   } else {
@@ -60,6 +74,15 @@ const server = http.createServer((req, res) => {
 });
 
 const port = 3000;
+
+con.connect((err) => {
+  if (err) {
+    console.log("fail to connect:", err);
+  } else {
+    console.log("Connected to mysql.");
+  }
+});
+
 server.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
