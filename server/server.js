@@ -1,6 +1,10 @@
 const http = require("http");
 const mysql = require("mysql");
 
+// Server port
+const port = 3000;
+
+// Set up connection with credentials
 const con = mysql.createConnection({
   host: "localhost",
   user: "test",
@@ -8,64 +12,51 @@ const con = mysql.createConnection({
   database: "webdev",
 });
 
-const server = http.createServer((req, res) => {
-  // Parse the request URL
-  const url = new URL(req.url, `http://${req.headers.host}`);
-
-  // Set response headers
+// Post Query Handler
+const postQuery = (req, res) => {
   res.writeHead(200, {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
   });
 
-  // Define the response object
-  const responseJson = JSON.stringify({ message: "Hello, World!" });
+  let body = {};
 
-  // Send the JSON response
-  // Check the request URL
-  if (url.pathname === "/") {
-    // Define the response object for the root endpoint
-    const responseJson = JSON.stringify({ message: "Hello, World!" });
-    res.end(responseJson);
-  } else if (url.pathname === "/api/test") {
-    // Define the response object for the /api/test endpoint
-    const responseJson = JSON.stringify({
-      message: "This is the test endpoint",
-    });
-    res.end(responseJson);
-  } else if (req.method == "POST" && url.pathname === "/api/sendQuery") {
-    let body = {};
+  // Parse incoming data
+  req.on("data", (chunk) => {
+    try {
+      const data = JSON.parse(chunk);
+      Object.assign(body, data);
+    } catch (error) {
+      console.error("Error parsing JSON:", error);
+      res.end(JSON.stringify({ status: "Error", message: "Invalid JSON" }));
+    }
+  });
 
-    // Get all data
-    req.on("data", (chunk) => {
-      try {
-        const data = JSON.parse(chunk);
-        Object.assign(body, data);
-      } catch (error) {
-        console.error("Error parsing JSON:", error);
-        res.end(JSON.stringify({ status: "Error", message: "Invalid JSON" }));
+  // Handle on incoming end
+  req.on("end", () => {
+    const sendFailMessage = () => {
+      res.end(JSON.stringify({ status: "Fail" }));
+    };
+
+    let { query } = body;
+
+    con.query(query, (err, result) => {
+      if (err) {
+        console.log("Fail to query:", err);
+        sendFailMessage();
+      } else {
+        console.log("Query Success");
+        res.end(JSON.stringify({ status: "Success", result: result }));
       }
     });
+  });
+};
 
-    // Handle request on data transfer end
-    req.on("end", () => {
-      // Send a database query
-      const sendFailMessage = () => {
-        res.end(JSON.stringify({ status: "Fail" }));
-      };
-
-      let { query } = body;
-
-      con.query(query, (err, result) => {
-        if (err) {
-          console.log("fail to query:", err);
-          sendFailMessage();
-        } else {
-          console.log("1 record inserted");
-          res.end(JSON.stringify({ status: "Success", result: result }));
-        }
-      });
-    });
+// Define Server
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (req.method == "POST" && url.pathname === "/api/sendQuery") {
+    postQuery(req, res);
   } else {
     // Handle unknown endpoints with a 404 response
     const responseJson = JSON.stringify({ error: "Endpoint not found" });
@@ -73,8 +64,7 @@ const server = http.createServer((req, res) => {
   }
 });
 
-const port = 3000;
-
+// Start database
 con.connect((err) => {
   if (err) {
     console.log("fail to connect:", err);
@@ -83,6 +73,7 @@ con.connect((err) => {
   }
 });
 
+// Start server
 server.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
